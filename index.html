@@ -3,31 +3,171 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cata Cards - Test</title>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <title>Cata Cards</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Helvetica, Arial, sans-serif; }
+    .container { padding: 20px; max-width: 800px; margin: 0 auto; }
+    .card { background: white; padding: 20px; margin: 10px 0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .btn { padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-size: 16px; margin: 5px; }
+    .btn-primary { background: #2d7b7b; color: white; }
+    .btn-secondary { background: #4a3456; color: white; }
+    input { padding: 12px; border: 2px solid #d4dce3; border-radius: 8px; width: 100%; font-size: 16px; }
+    h1 { font-family: 'Amatic SC', cursive; color: #2e2645; font-size: 48px; margin-bottom: 10px; }
+    h2 { color: #2e2645; margin: 20px 0 10px; }
+    .logo { font-family: 'Amatic SC', cursive; font-size: 32px; margin-bottom: 20px; }
+  </style>
 </head>
 <body>
   <div id="root"></div>
   <script>
-    const { useState } = React;
-    const { createRoot } = ReactDOM;
+    const { useState, useEffect, createElement: e } = React;
+    
+    function CataCards() {
+      const [cards, setCards] = useState([]);
+      const [inputWord, setInputWord] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [view, setView] = useState('home');
 
-    function App() {
-      const [count, setCount] = useState(0);
-      
-      return React.createElement('div', { style: { padding: '20px', fontFamily: 'Arial' } },
-        React.createElement('h1', null, 'Cata Cards Test'),
-        React.createElement('p', null, `Count: ${count}`),
-        React.createElement('button', { 
-          onClick: () => setCount(count + 1),
-          style: { padding: '10px 20px', fontSize: '16px' }
-        }, 'Click Me!')
-      );
+      useEffect(() => {
+        const saved = localStorage.getItem('cataCards');
+        if (saved) setCards(JSON.parse(saved));
+      }, []);
+
+      useEffect(() => {
+        if (cards.length > 0) localStorage.setItem('cataCards', JSON.stringify(cards));
+      }, [cards]);
+
+      async function addCard() {
+        if (!inputWord.trim()) return;
+        setLoading(true);
+        
+        try {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 2000,
+              messages: [{
+                role: 'user',
+                content: `Analyze "${inputWord}". Respond ONLY with JSON: {"isValid":true/false,"spanish":"word","english":"translation","partOfSpeech":"type","exampleSpanish":"sentence","exampleEnglish":"translation"}`
+              }]
+            })
+          });
+
+          const data = await response.json();
+          const content = data.content.find(c => c.type === 'text')?.text || '';
+          const parsed = JSON.parse(content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim());
+
+          if (parsed.isValid) {
+            setCards([...cards, { ...parsed, id: Date.now(), status: 'learning' }]);
+            setInputWord('');
+          } else {
+            alert('Not a valid Spanish word');
+          }
+        } catch (error) {
+          alert('Error: ' + error.message);
+        }
+        setLoading(false);
+      }
+
+      function deleteCard(id) {
+        setCards(cards.filter(c => c.id !== id));
+      }
+
+      const stats = {
+        total: cards.length,
+        learning: cards.filter(c => c.status === 'learning').length,
+        mastered: cards.filter(c => c.status === 'mastered').length
+      };
+
+      if (view === 'home') {
+        return e('div', { className: 'container' },
+          e('div', { className: 'logo' }, 'Cata Cards'),
+          e('h1', null, 'Welcome back, Catharine!'),
+          e('p', { style: { color: '#7a8d9a', marginBottom: 30 } }, 'Ready to expand your vocabulary today?'),
+          
+          e('div', { className: 'card' },
+            e('h2', null, 'Your Progress'),
+            e('div', { style: { display: 'flex', gap: 20, marginTop: 20 } },
+              e('div', null,
+                e('div', { style: { fontSize: 32, fontWeight: 'bold', color: '#2e2645' } }, stats.total),
+                e('div', { style: { color: '#7a8d9a' } }, 'Total Cards')
+              ),
+              e('div', null,
+                e('div', { style: { fontSize: 32, fontWeight: 'bold', color: '#4a3456' } }, stats.learning),
+                e('div', { style: { color: '#7a8d9a' } }, 'Learning')
+              ),
+              e('div', null,
+                e('div', { style: { fontSize: 32, fontWeight: 'bold', color: '#2d7b7b' } }, stats.mastered),
+                e('div', { style: { color: '#7a8d9a' } }, 'Mastered')
+              )
+            )
+          ),
+
+          e('div', { className: 'card', style: { marginTop: 20 } },
+            e('h2', null, 'Add New Card'),
+            e('input', {
+              type: 'text',
+              value: inputWord,
+              onChange: (ev) => setInputWord(ev.target.value),
+              onKeyPress: (ev) => ev.key === 'Enter' && addCard(),
+              placeholder: 'Enter Spanish word or phrase...',
+              disabled: loading,
+              style: { marginBottom: 15 }
+            }),
+            e('button', {
+              className: 'btn btn-secondary',
+              onClick: addCard,
+              disabled: loading || !inputWord.trim()
+            }, loading ? 'Generating...' : 'Add Card')
+          ),
+
+          e('div', { className: 'card', style: { marginTop: 20 } },
+            e('h2', null, `My Cards (${cards.length})`),
+            e('div', null,
+              cards.length === 0 
+                ? e('p', { style: { color: '#7a8d9a', padding: 20, textAlign: 'center' } }, 'No cards yet. Add your first card above!')
+                : cards.map(card => 
+                    e('div', { 
+                      key: card.id, 
+                      style: { 
+                        padding: 15, 
+                        marginTop: 10, 
+                        background: '#f0f4f7', 
+                        borderRadius: 8,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }
+                    },
+                      e('div', null,
+                        e('div', { style: { fontSize: 24, fontWeight: 'bold', color: '#2e2645' } }, card.spanish),
+                        e('div', { style: { color: '#7a8d9a', marginTop: 5 } }, card.english),
+                        e('div', { style: { fontSize: 12, color: '#7a8d9a', marginTop: 5 } }, 
+                          `${card.partOfSpeech} • ${card.status}`
+                        )
+                      ),
+                      e('button', {
+                        className: 'btn',
+                        onClick: () => deleteCard(card.id),
+                        style: { background: '#fee2e2', color: '#991b1b' }
+                      }, 'Delete')
+                    )
+                  )
+            )
+          )
+        );
+      }
+
+      return e('div', { className: 'container' }, 'Loading...');
     }
 
-    const root = createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
+    ReactDOM.createRoot(document.getElementById('root')).render(e(CataCards));
   </script>
 </body>
 </html>
